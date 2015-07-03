@@ -1770,7 +1770,7 @@ static int mass_storage_function_init(struct android_usb_function *f,
 	struct fsg_common *common;
 	int err;
 	int i;
-	const char *name[3];
+	const char *name[2];
 
 	config = kzalloc(sizeof(struct mass_storage_function_config),
 								GFP_KERNEL);
@@ -1859,8 +1859,92 @@ static DEVICE_ATTR(inquiry_string, S_IRUGO | S_IWUSR,
 					mass_storage_inquiry_show,
 					mass_storage_inquiry_store);
 
+/* [Arima JimCheng 20131114] SoMC SCSI patch for WHQL ++ */
+static ssize_t mass_storage_serial_number_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct android_usb_function *f = dev_get_drvdata(dev);
+	struct mass_storage_function_config *config = f->config;
+	return snprintf(buf, PAGE_SIZE, "%s\n", config->common->serial_number);
+}
+
+static ssize_t mass_storage_serial_number_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct android_usb_function *f = dev_get_drvdata(dev);
+	struct mass_storage_function_config *config = f->config;
+	if (size >= sizeof(config->common->serial_number))
+		return -EINVAL;
+	return snprintf(config->common->serial_number,
+			sizeof(config->common->serial_number),
+			"%s",
+			buf);
+}
+
+static DEVICE_ATTR(serial_number, S_IRUGO | S_IWUSR,
+					mass_storage_serial_number_show,
+					mass_storage_serial_number_store);
+
+static ssize_t mass_storage_eui64_id_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct android_usb_function *f = dev_get_drvdata(dev);
+	struct mass_storage_function_config *config = f->config;
+	return snprintf(buf, PAGE_SIZE, "%02x%02x%02x%02x%02x%02x%02x%02x\n",
+			config->common->eui64_id.ieee_company_id[0],
+			config->common->eui64_id.ieee_company_id[1],
+			config->common->eui64_id.ieee_company_id[2],
+			config->common->eui64_id.vendor_specific_ext_field[0],
+			config->common->eui64_id.vendor_specific_ext_field[1],
+			config->common->eui64_id.vendor_specific_ext_field[2],
+			config->common->eui64_id.vendor_specific_ext_field[3],
+			config->common->eui64_id.vendor_specific_ext_field[4]);
+}
+
+static ssize_t mass_storage_eui64_id_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct android_usb_function *f = dev_get_drvdata(dev);
+	struct mass_storage_function_config *config = f->config;
+	int ret;
+	char tmp[3];
+	u8 val;
+	int i;
+	int offset = 0;
+
+	if (size < sizeof(config->common->eui64_id) * 2)
+		return -EINVAL;
+	tmp[2] = '\0';
+	for (i = 0; i < sizeof(config->common->eui64_id.ieee_company_id); i++) {
+		memcpy(tmp, &buf[i * 2], 2);
+		ret = kstrtou8((const char *)tmp, 16, &val);
+		if (ret)
+			return ret;
+		config->common->eui64_id.ieee_company_id[i] = val;
+		offset += 2;
+	}
+	for (i = 0; i < sizeof(
+		config->common->eui64_id.vendor_specific_ext_field); i++) {
+		memcpy(tmp, &buf[offset + i * 2], 2);
+		ret = kstrtou8((const char *)tmp, 16, &val);
+		if (ret)
+			return ret;
+		config->common->eui64_id.vendor_specific_ext_field[i] = val;
+	}
+
+	return sizeof(config->common->eui64_id);
+}
+
+static DEVICE_ATTR(eui64_id, S_IRUGO | S_IWUSR,
+					mass_storage_eui64_id_show,
+					mass_storage_eui64_id_store);
+/* [Arima JimCheng 20131114] SoMC SCSI patch for WHQL -- */
 static struct device_attribute *mass_storage_function_attributes[] = {
 	&dev_attr_inquiry_string,
+/* [Arima JimCheng 20131114] SoMC SCSI patch for WHQL ++ */
+	&dev_attr_serial_number,
+	&dev_attr_eui64_id,
+/* [Arima JimCheng 20131114] SoMC SCSI patch for WHQL -- */
 	NULL
 };
 
@@ -2181,22 +2265,6 @@ android_unbind_enabled_functions(struct android_dev *dev,
 	}
 }
 
-static inline void check_streaming_func(struct usb_gadget *gadget,
-		struct android_usb_platform_data *pdata,
-		char *name)
-{
-	int i;
-
-	for (i = 0; i < pdata->streaming_func_count; i++) {
-		if (!strcmp(name,
-			pdata->streaming_func[i])) {
-			pr_debug("set streaming_enabled to true\n");
-			gadget->streaming_enabled = true;
-			break;
-		}
-	}
-}
-
 static int android_enable_function(struct android_dev *dev,
 				   struct android_configuration *conf,
 				   char *name)
@@ -2204,10 +2272,20 @@ static int android_enable_function(struct android_dev *dev,
 	struct android_usb_function **functions = dev->functions;
 	struct android_usb_function *f;
 	struct android_usb_function_holder *f_holder;
-	struct android_usb_platform_data *pdata = dev->pdata;
-	struct usb_gadget *gadget = dev->cdev->gadget;
-
 	while ((f = *functions++)) {
+/*[Arima JimCheng 20131014] support PC Companion++*/
+	if (!strcmp(name, "cdrom") && !strcmp(f->name, "mass_storage")) {
+			f_holder = kzalloc(sizeof(*f_holder),
+						GFP_KERNEL);
+						
+			f->android_dev = dev;
+			f_holder->f = f;
+			list_add_tail(&f_holder->enabled_list,
+					      &conf->enabled_functions);
+			return 0;
+		}
+		
+/*[Arima JimCheng 20131014] support PC Companion--*/
 		if (!strcmp(name, f->name)) {
 			if (f->android_dev && f->android_dev != dev)
 				pr_err("%s is enabled in other device\n",
@@ -2224,13 +2302,6 @@ static int android_enable_function(struct android_dev *dev,
 				f_holder->f = f;
 				list_add_tail(&f_holder->enabled_list,
 					      &conf->enabled_functions);
-				pr_debug("func:%s is enabled.\n", f->name);
-				/*
-				 * compare enable function with streaming func
-				 * list and based on the same request streaming.
-				 */
-				check_streaming_func(gadget, pdata, f->name);
-
 				return 0;
 			}
 		}
@@ -2404,6 +2475,9 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 	bool audio_enabled = false;
 	static DEFINE_RATELIMIT_STATE(rl, 10*HZ, 1);
 	int err = 0;
+/*[Arima JimCheng 20131016] Fix strings table of USB descriptor ++*/
+	int id = 0;
+/*[Arima JimCheng 20131016] Fix strings table of USB descriptor --*/
 
 	if (!cdev)
 		return -ENODEV;
@@ -2422,6 +2496,33 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 		cdev->desc.bDeviceClass = device_desc.bDeviceClass;
 		cdev->desc.bDeviceSubClass = device_desc.bDeviceSubClass;
 		cdev->desc.bDeviceProtocol = device_desc.bDeviceProtocol;
+		
+/*[Arima JimCheng 20131016] Fix strings table of USB descriptor ++*/
+		if (strings_dev[STRING_MANUFACTURER_IDX].id == 0) {
+			id = usb_string_id(cdev);
+			if (id >= 0) {
+				strings_dev[STRING_MANUFACTURER_IDX].id = id;
+				device_desc.iManufacturer = id;
+				cdev->desc.iManufacturer = id;
+			}
+		}
+		if (strings_dev[STRING_PRODUCT_IDX].id == 0) {
+			id = usb_string_id(cdev);
+			if (id >= 0) {
+				strings_dev[STRING_PRODUCT_IDX].id = id;
+				device_desc.iProduct = id;
+				cdev->desc.iProduct = id;
+			}
+		}
+		if (strings_dev[STRING_SERIAL_IDX].id == 0) {
+			id = usb_string_id(cdev);
+			if (id >= 0) {
+				strings_dev[STRING_SERIAL_IDX].id = id;
+				device_desc.iSerialNumber = id;
+				cdev->desc.iSerialNumber = id;
+			}
+		}
+/*[Arima JimCheng 20131016] Fix strings table of USB descriptor --*/
 
 		/* Audio dock accessory is unable to enumerate device if
 		 * pull-up is enabled immediately. The enumeration is
@@ -2455,6 +2556,12 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 				if (f_holder->f->disable)
 					f_holder->f->disable(f_holder->f);
 			}
+/*[Arima JimCheng 20131016] Fix strings table of USB descriptor ++*/
+		strings_dev[STRING_MANUFACTURER_IDX].id = 0;
+		strings_dev[STRING_PRODUCT_IDX].id = 0;
+		strings_dev[STRING_SERIAL_IDX].id = 0;
+		cdev->next_string_id = 0;
+/*[Arima JimCheng 20131016] Fix strings table of USB descriptor --*/
 		dev->enabled = false;
 	} else if (__ratelimit(&rl)) {
 		pr_err("android_usb: already %s\n",
@@ -2603,10 +2710,6 @@ static void android_unbind_config(struct usb_configuration *c)
 {
 	struct android_dev *dev = cdev_to_android_dev(c->cdev);
 
-	if (c->cdev->gadget->streaming_enabled) {
-		c->cdev->gadget->streaming_enabled = false;
-		pr_debug("setting streaming_enabled to false.\n");
-	}
 	android_unbind_enabled_functions(dev, c);
 }
 
@@ -2698,6 +2801,66 @@ static struct usb_composite_driver android_usb_driver = {
 	.max_speed	= USB_SPEED_SUPER
 };
 
+/*[Arima JimCheng 201301001] fix WINXP standard MTP driver not working issue ++*/
+static int ms_os_desc_setup(struct usb_composite_dev *cdev, const struct usb_ctrlrequest *ctrl)
+{
+	int	value = -EOPNOTSUPP;
+	u16	w_index = le16_to_cpu(ctrl->wIndex);
+	u16	w_value = le16_to_cpu(ctrl->wValue);
+	u16	w_length = le16_to_cpu(ctrl->wLength);
+
+	pr_debug("ms_os_desc_setup "
+			"%02x.%02x v%04x i%04x l%u\n",
+			ctrl->bRequestType, ctrl->bRequest,
+			w_value, w_index, w_length);
+
+	if ((ctrl->bRequestType & USB_TYPE_MASK) == USB_TYPE_VENDOR) {
+		/* Handle Microsoft OS descriptor */
+		pr_debug("vendor request: %d index: %d value: %d length: %d vid %04X pid %04X\n",
+			ctrl->bRequest, w_index, w_value, w_length, cdev->desc.idVendor, cdev->desc.idProduct);
+
+		if (ctrl->bRequest == 1
+				&& (ctrl->bRequestType & USB_DIR_IN)
+				&& (w_index == 4 || w_index == 5 )) {
+			if (cdev->desc.idVendor == 0x0FCE) {
+				/* SoMC */
+				if ((cdev->desc.idProduct & 0xF000) == 0x0000) {
+					/* MTP Only */
+					value = (w_length < sizeof(mtp_ext_config_desc) ?
+						w_length : sizeof(mtp_ext_config_desc));
+					memcpy(cdev->req->buf, &mtp_ext_config_desc, value);
+				} else if (((cdev->desc.idProduct & 0xF000) == 0x4000) ||
+					   ((cdev->desc.idProduct & 0xF000) == 0x5000)) {
+					/* MTP + CDROM or MTP + ADB */
+					if ((cdev->desc.idProduct & 0x0FFF) == 0x0146) {
+						/* eng mode */
+						value = (w_length < sizeof(mtp_adb_eng_ext_config_desc) ?
+							w_length : sizeof(mtp_adb_eng_ext_config_desc));
+						memcpy(cdev->req->buf, &mtp_adb_eng_ext_config_desc, value);
+					} else {
+						/* userdebug mode or user mode */
+						value = (w_length < sizeof(mtp_adb_ext_config_desc) ?
+							w_length : sizeof(mtp_adb_ext_config_desc));
+						memcpy(cdev->req->buf, &mtp_adb_ext_config_desc, value);
+					}
+				}
+			}
+		}
+	}
+
+	/* respond with data transfer or status phase? */
+	if (value >= 0) {
+		int rc;
+		cdev->req->zero = value < w_length;
+		cdev->req->length = value;
+		rc = usb_ep_queue(cdev->gadget->ep0, cdev->req, GFP_ATOMIC);
+		if (rc < 0)
+			pr_err("%s setup response queue error\n", __func__);
+	}
+	return value;
+}
+/*[Arima JimCheng 20131001] fix WINXP standard MTP driver not working issue --*/
+
 static int
 android_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *c)
 {
@@ -2715,6 +2878,11 @@ android_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *c)
 	req->length = 0;
 	gadget->ep0->driver_data = cdev;
 
+/*[Arima JimCheng 20130913] fix WINXP standard MTP driver not working issue ++*/
+	value = ms_os_desc_setup(cdev, c);
+
+	if (value < 0)
+	{
 	list_for_each_entry(conf, &dev->configs, list_item)
 		list_for_each_entry(f_holder,
 				    &conf->enabled_functions,
@@ -2726,6 +2894,8 @@ android_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *c)
 					break;
 			}
 		}
+	}
+/*[Arima JimCheng 20130913] fix WINXP standard MTP driver not working issue --*/
 
 	/* Special case the accessory function.
 	 * It needs to handle control requests before it is enabled.
@@ -2775,10 +2945,8 @@ static void android_suspend(struct usb_gadget *gadget)
 	unsigned long flags;
 
 	spin_lock_irqsave(&cdev->lock, flags);
-	if (!dev->suspended) {
-		dev->suspended = 1;
-		schedule_work(&dev->work);
-	}
+	dev->suspended = 1;
+	schedule_work(&dev->work);
 	spin_unlock_irqrestore(&cdev->lock, flags);
 
 	composite_suspend(gadget);
@@ -2791,10 +2959,8 @@ static void android_resume(struct usb_gadget *gadget)
 	unsigned long flags;
 
 	spin_lock_irqsave(&cdev->lock, flags);
-	if (dev->suspended) {
-		dev->suspended = 0;
-		schedule_work(&dev->work);
-	}
+	dev->suspended = 0;
+	schedule_work(&dev->work);
 	spin_unlock_irqrestore(&cdev->lock, flags);
 
 	composite_resume(gadget);
@@ -2929,7 +3095,7 @@ static int __devinit android_probe(struct platform_device *pdev)
 	struct android_usb_platform_data *pdata;
 	struct android_dev *android_dev;
 	struct resource *res;
-	int ret = 0, i, len = 0;
+	int ret = 0;
 
 	if (pdev->dev.of_node) {
 		dev_dbg(&pdev->dev, "device tree enabled\n");
@@ -2946,33 +3112,6 @@ static int __devinit android_probe(struct platform_device *pdev)
 				"qcom,android-usb-cdrom");
 		pdata->internal_ums = of_property_read_bool(pdev->dev.of_node,
 				"qcom,android-usb-internal-ums");
-		len = of_property_count_strings(pdev->dev.of_node,
-				"qcom,streaming-func");
-		if (len > MAX_STREAMING_FUNCS) {
-			pr_err("Invalid number of functions used.\n");
-			return -EINVAL;
-		}
-
-		for (i = 0; i < len; i++) {
-			const char *name = NULL;
-
-			of_property_read_string_index(pdev->dev.of_node,
-				"qcom,streaming-func", i, &name);
-			if (!name)
-				continue;
-
-			if (sizeof(name) > FUNC_NAME_LEN) {
-				pr_err("Function name is bigger than allowed.\n");
-				continue;
-			}
-
-			strlcpy(pdata->streaming_func[i], name,
-				sizeof(pdata->streaming_func[i]));
-			pr_debug("name of streaming function:%s\n",
-				pdata->streaming_func[i]);
-		}
-
-		pdata->streaming_func_count = len;
 	} else {
 		pdata = pdev->dev.platform_data;
 	}

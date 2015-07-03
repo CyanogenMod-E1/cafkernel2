@@ -71,7 +71,17 @@ static ssize_t power_supply_show_property(struct device *dev,
 	struct power_supply *psy = dev_get_drvdata(dev);
 	const ptrdiff_t off = attr - power_supply_attrs;
 	union power_supply_propval value;
-
+  
+	//[Arima Abner] 20131004 modify Battery status and power plug ++
+	psy->get_property(psy, POWER_SUPPLY_PROP_TYPE, &value);
+	
+	if(value.intval == 1){  
+      psy->type = 4;
+  }else if (value.intval == 2){
+      psy->type = 5;  
+  }
+	//[Arima Abner] 20131004 modify Battery status and power plug ++
+	
 	if (off == POWER_SUPPLY_PROP_TYPE)
 		value.intval = psy->type;
 	else
@@ -152,7 +162,6 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(current_max),
 	POWER_SUPPLY_ATTR(input_current_max),
 	POWER_SUPPLY_ATTR(input_current_trim),
-	POWER_SUPPLY_ATTR(input_current_settled),
 	POWER_SUPPLY_ATTR(current_now),
 	POWER_SUPPLY_ATTR(current_avg),
 	POWER_SUPPLY_ATTR(power_now),

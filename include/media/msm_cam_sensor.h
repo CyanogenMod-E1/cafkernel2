@@ -47,7 +47,6 @@
 #define MAX_EEPROM_NAME 32
 
 #define MAX_AF_ITERATIONS 3
-#define MAX_NUMBER_OF_STEPS 47
 
 enum flash_type {
 	LED_FLASH = 1,
@@ -350,6 +349,8 @@ struct msm_sensor_init_params {
 	enum camb_position_t position;
 	/* sensor mount angle */
 	uint32_t            sensor_mount_angle;
+	/* sensor hawdware version */
+	int HW_VERSION;//Arima camera version
 };
 
 struct sensorb_cfg_data {
@@ -415,17 +416,17 @@ enum msm_sensor_cfg_type_t {
 	CFG_WRITE_I2C_ARRAY,
 	CFG_SLAVE_WRITE_I2C_ARRAY,
 	CFG_WRITE_I2C_SEQ_ARRAY,
-	CFG_POWER_UP,
+	CFG_POWER_UP, //5
 	CFG_POWER_DOWN,
 	CFG_SET_STOP_STREAM_SETTING,
 	CFG_GET_SENSOR_INFO,
 	CFG_GET_SENSOR_INIT_PARAMS,
-	CFG_SET_INIT_SETTING,
+	CFG_SET_INIT_SETTING,//10
 	CFG_SET_RESOLUTION,
 	CFG_SET_STOP_STREAM,
 	CFG_SET_START_STREAM,
 	CFG_SET_SATURATION,
-	CFG_SET_CONTRAST,
+	CFG_SET_CONTRAST,//15
 	CFG_SET_SHARPNESS,
 	CFG_SET_ISO,
 	CFG_SET_EXPOSURE_COMPENSATION,
@@ -435,13 +436,21 @@ enum msm_sensor_cfg_type_t {
 	CFG_SET_WHITE_BALANCE,
 	CFG_SET_AUTOFOCUS,
 	CFG_CANCEL_AUTOFOCUS,
+
+	
+// PeterShih - 20130917 - add some type for camera feature
+       CFG_SET_BRIGHTNESS,
+	CFG_GET_SHUTTER,
+	CFG_GET_GAIN,
+	CFG_GET_ISO,
+	CFG_SET_AUTO_BESTSHOT_MODE,
+	
 };
 
 enum msm_actuator_cfg_type_t {
 	CFG_GET_ACTUATOR_INFO,
 	CFG_SET_ACTUATOR_INFO,
 	CFG_SET_DEFAULT_FOCUS,
-	CFG_SET_POSITION,
 	CFG_MOVE_FOCUS,
 };
 
@@ -484,7 +493,6 @@ struct msm_actuator_move_params_t {
 	int8_t sign_dir;
 	int16_t dest_step_pos;
 	int32_t num_steps;
-	uint16_t curr_lens_pos;
 	struct damping_params_t *ringing_params;
 };
 
@@ -540,13 +548,6 @@ enum af_camera_name {
 	ACTUATOR_WEB_CAM_2,
 };
 
-
-struct msm_actuator_set_position_t {
-	uint16_t number_of_steps;
-	uint16_t pos[MAX_NUMBER_OF_STEPS];
-	uint16_t delay[MAX_NUMBER_OF_STEPS];
-};
-
 struct msm_actuator_cfg_data {
 	int cfgtype;
 	uint8_t is_af_supported;
@@ -554,7 +555,6 @@ struct msm_actuator_cfg_data {
 		struct msm_actuator_move_params_t move;
 		struct msm_actuator_set_info_t set_info;
 		struct msm_actuator_get_info_t get_info;
-		struct msm_actuator_set_position_t setpos;
 		enum af_camera_name cam_name;
 	} cfg;
 };
@@ -582,8 +582,6 @@ enum msm_camera_led_config_t {
 
 struct msm_camera_led_cfg_t {
 	enum msm_camera_led_config_t cfgtype;
-	uint32_t torch_current;
-	uint32_t flash_current[2];
 };
 
 #define VIDIOC_MSM_SENSOR_CFG \

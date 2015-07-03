@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -39,6 +39,9 @@
 #include <mach/socinfo.h>
 #include <mach/subsystem_notif.h>
 #include <mach/subsystem_restart.h>
+// << FerryWu, 2013/09/17, create proc file for crash status
+#include <mach/restart.h>
+// >> FerryWu, 2013/09/17, create proc file for crash status
 
 #include "smd_private.h"
 
@@ -163,6 +166,7 @@ struct subsys_device {
 	char miscdevice_name[32];
 	struct completion err_ready;
 	bool crashed;
+	int restart_count; // FerryWu, 2013/07/23, add subsystem restart count for MTBC
 };
 
 static struct subsys_device *to_subsys(struct device *d)
@@ -244,10 +248,56 @@ void subsys_default_online(struct subsys_device *dev)
 }
 EXPORT_SYMBOL(subsys_default_online);
 
+// << FerryWu, 2013/07/23, add subsystem restart count for MTBC
+static ssize_t
+restart_count_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int count = to_subsys(dev)->restart_count;
+	return snprintf(buf, PAGE_SIZE, "%d\n", count);
+}
+// >> FerryWu, 2013/07/23, add subsystem restart count for MTBC
+
+// << FerryWu, 2013/07/24, support forcing subsystem restart for MTBC
+static ssize_t
+debug_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int count = to_subsys(dev)->count;
+	return snprintf(buf, PAGE_SIZE, "%d\n", count);
+}
+
+static ssize_t debug_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct subsys_device *subsys = to_subsys(dev);
+	const char *p;
+
+	p = memchr(buf, '\n', count);
+	if (p)
+		count = p - buf;
+
+	if (!strncasecmp(buf, "restart", count)) {
+		pr_err("%s subsystem failure reason: force subsystem restart", subsys->desc->name);
+		if (subsystem_restart_dev(subsys))
+			return -EIO;
+	} else if (!strncasecmp(buf, "get", count)) {
+		if (subsystem_get(subsys->desc->name))
+			return -EIO;
+	} else if (!strncasecmp(buf, "put", count)) {
+		subsystem_put(subsys);
+	} else {
+		return -EINVAL;
+	}
+
+	return count;
+}
+// >> FerryWu, 2013/07/24, support forcing subsystem restart for MTBC
+
 static struct device_attribute subsys_attrs[] = {
 	__ATTR_RO(name),
 	__ATTR_RO(state),
 	__ATTR(restart_level, 0644, restart_level_show, restart_level_store),
+	__ATTR(restart_count, 0444, restart_count_show, NULL), // FerryWu, 2013/07/23, add subsystem restart count for MTBC
+	__ATTR(debug, 0644, debug_show, debug_store), // FerryWu, 2013/07/24, support forcing subsystem restart for MTBC
 	__ATTR_NULL,
 };
 
@@ -466,20 +516,13 @@ static void subsystem_powerup(struct subsys_device *dev, void *data)
 
 	pr_info("[%p]: Powering up %s\n", current, name);
 	init_completion(&dev->err_ready);
-
-	if (dev->desc->powerup(dev->desc) < 0) {
-		notify_each_subsys_device(&dev, 1, SUBSYS_POWERUP_FAILURE,
-								NULL);
+	if (dev->desc->powerup(dev->desc) < 0)
 		panic("[%p]: Powerup error: %s!", current, name);
-	}
 
 	ret = wait_for_err_ready(dev);
-	if (ret) {
-		notify_each_subsys_device(&dev, 1, SUBSYS_POWERUP_FAILURE,
-								NULL);
+	if (ret)
 		panic("[%p]: Timed out waiting for error ready: %s!",
 			current, name);
-	}
 	subsys_set_state(dev, SUBSYS_ONLINE);
 }
 
@@ -507,11 +550,8 @@ static int subsys_start(struct subsys_device *subsys)
 
 	init_completion(&subsys->err_ready);
 	ret = subsys->desc->start(subsys->desc);
-	if (ret){
-		notify_each_subsys_device(&subsys, 1, SUBSYS_POWERUP_FAILURE,
-									NULL);
+	if (ret)
 		return ret;
-	}
 
 	if (subsys->desc->is_not_loadable) {
 		subsys_set_state(subsys, SUBSYS_ONLINE);
@@ -519,14 +559,12 @@ static int subsys_start(struct subsys_device *subsys)
 	}
 
 	ret = wait_for_err_ready(subsys);
-	if (ret) {
+	if (ret)
 		/* pil-boot succeeded but we need to shutdown
 		 * the device because error ready timed out.
 		 */
-		notify_each_subsys_device(&subsys, 1, SUBSYS_POWERUP_FAILURE,
-									NULL);
 		subsys->desc->stop(subsys->desc);
-	} else
+	else
 		subsys_set_state(subsys, SUBSYS_ONLINE);
 
 	return ret;
@@ -685,6 +723,12 @@ static void subsystem_restart_wq_func(struct work_struct *work)
 			desc->name);
 	notify_each_subsys_device(list, count, SUBSYS_BEFORE_SHUTDOWN, NULL);
 	for_each_subsys_device(list, count, NULL, subsystem_shutdown);
+	// << FerryWu, 2013/10/17, store kmsg to /proc/last_ssr_kmsg when ssr occurs
+	{
+		extern void last_ssr_kmsg_write(void);
+		last_ssr_kmsg_write();
+	}
+	// >> FerryWu, 2013/10/17, store kmsg to /proc/last_ssr_kmsg when ssr occurs
 	notify_each_subsys_device(list, count, SUBSYS_AFTER_SHUTDOWN, NULL);
 
 	notify_each_subsys_device(list, count, SUBSYS_RAMDUMP_NOTIFICATION,
@@ -711,6 +755,19 @@ static void subsystem_restart_wq_func(struct work_struct *work)
 	track->p_state = SUBSYS_NORMAL;
 	wake_unlock(&dev->wake_lock);
 	spin_unlock_irqrestore(&track->s_lock, flags);
+
+	// << FerryWu, 2013/10/22, broadcast subsystem restart intent
+	{
+		// SUBSYS_UEVENT_NAME = "SUBSYS_NAME=" + SUBSYS_NAME + "\0"
+		#define SUBSYS_UEVENT_NAME_MAX_LENGTH (SUBSYS_NAME_MAX_LENGTH+13)
+		char uevent_param_name[SUBSYS_UEVENT_NAME_MAX_LENGTH];
+		char *uevent_env_restart[3] = {uevent_param_name, "SUBSYS_EVENT=RESTART", NULL};
+
+		memset(uevent_param_name, 0, SUBSYS_UEVENT_NAME_MAX_LENGTH);
+		snprintf(uevent_param_name, SUBSYS_UEVENT_NAME_MAX_LENGTH, "SUBSYS_NAME=%s", dev->desc->name);
+		kobject_uevent_env(&dev->dev.kobj, KOBJ_CHANGE, uevent_env_restart);
+	}
+	// >> FerryWu, 2013/10/22, broadcast subsystem restart intent
 }
 
 static void __subsystem_restart_dev(struct subsys_device *dev)
@@ -773,7 +830,16 @@ int subsystem_restart_dev(struct subsys_device *dev)
 	switch (dev->restart_level) {
 
 	case RESET_SUBSYS_COUPLED:
+		// << FerryWu, 2013/10/14, ramdumper customization
+		pr_err("subsys-restart: Resetting the SoC - %s crashed.", name);
+		// >> FerryWu, 2013/10/14, ramdumper customization
 		__subsystem_restart_dev(dev);
+		// << FerryWu, 2013/09/17, create proc file for crash status
+		msm_set_crash_status(1);
+		// >> FerryWu, 2013/09/17, create proc file for crash status
+		// << FerryWu, 2013/07/23, add subsystem restart count for MTBC
+		dev->restart_count++;
+		// >> FerryWu, 2013/07/23, add subsystem restart count for MTBC
 		break;
 	case RESET_SOC:
 		panic("subsys-restart: Resetting the SoC - %s crashed.", name);

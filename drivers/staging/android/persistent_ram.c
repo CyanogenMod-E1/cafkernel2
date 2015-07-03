@@ -457,7 +457,10 @@ persistent_ram_init_ringbuffer(struct device *dev, bool ecc)
 	return __persistent_ram_init(dev, ecc);
 }
 
-int __init persistent_ram_early_init(struct persistent_ram *ram)
+// << FerryWu, 2013/08/15, configure ram console in device tree
+//int __init persistent_ram_early_init(struct persistent_ram *ram)
+int __devinit persistent_ram_early_init(struct persistent_ram *ram)
+// >> FerryWu, 2013/08/15, configure ram console in device tree
 {
 	int ret;
 

@@ -12,7 +12,7 @@
 
 #include <mach/camera2.h>
 #include "msm_camera_i2c.h"
-
+//#define CONFIG_MSMB_CAMERA_DEBUG
 #undef CDBG
 #ifdef CONFIG_MSMB_CAMERA_DEBUG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
@@ -138,7 +138,7 @@ int32_t msm_camera_qup_i2c_read_seq(struct msm_camera_i2c_client *client,
 	}
 	return rc;
 }
-
+//static int32_t i2c_item=0;
 int32_t msm_camera_qup_i2c_write(struct msm_camera_i2c_client *client,
 	uint32_t addr, uint16_t data,
 	enum msm_camera_i2c_data_type data_type)
@@ -146,15 +146,16 @@ int32_t msm_camera_qup_i2c_write(struct msm_camera_i2c_client *client,
 	int32_t rc = -EFAULT;
 	unsigned char buf[client->addr_type+data_type];
 	uint8_t len = 0;
-
+       
 	if ((client->addr_type != MSM_CAMERA_I2C_BYTE_ADDR
 		&& client->addr_type != MSM_CAMERA_I2C_WORD_ADDR)
 		|| (data_type != MSM_CAMERA_I2C_BYTE_DATA
 		&& data_type != MSM_CAMERA_I2C_WORD_DATA))
 		return rc;
-
-	S_I2C_DBG("%s reg addr = 0x%x data type: %d\n",
-			  __func__, addr, data_type);
+//if(i2c_item>6066)	
+//pr_err("%s, [%d] addr = 0x%x : 0x%x", __func__,i2c_item,addr,data);
+//i2c_item++;
+	S_I2C_DBG("%s reg addr = 0x%x data type: %d\n", __func__, addr, data_type);
 	if (client->addr_type == MSM_CAMERA_I2C_BYTE_ADDR) {
 		buf[0] = addr;
 		S_I2C_DBG("%s byte %d: 0x%x\n", __func__,
@@ -476,7 +477,7 @@ int32_t msm_camera_qup_i2c_write_conf_tbl(
 	enum msm_camera_i2c_data_type data_type)
 {
 	int i;
-	int32_t rc = -EFAULT;
+	int32_t rc = 0;//-EFAULT; // PeterShih 20131109 - set the default value to no error
 	pr_err("%s, E. ", __func__);
 	for (i = 0; i < size; i++) {
 		enum msm_camera_i2c_data_type dt;

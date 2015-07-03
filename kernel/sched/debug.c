@@ -105,7 +105,13 @@ static char *task_group_path(struct task_group *tg)
 		group_path[0] = '\0';
 		return group_path;
 	}
-	cgroup_path(tg->css.cgroup, group_path, PATH_MAX);
+
+   /*[Arima JimCheng 20131225] Rollback workitem 32175 ++*/
+	// << FerryWu, 2013/12/17, fix coverity 103078
+	cgroup_path(tg->css.cgroup, group_path, PATH_MAX) ;
+	//	group_path[0] = '\0';
+	// >> FerryWu, 2013/12/17, fix coverity 103078
+   /*[Arima JimCheng 20131225] Rollback workitem 32175 --*/
 	return group_path;
 }
 #endif
@@ -374,12 +380,10 @@ static int sched_debug_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-#ifdef CONFIG_SYSRQ_SCHED_DEBUG
 void sysrq_sched_debug_show(void)
 {
 	sched_debug_show(NULL, NULL);
 }
-#endif
 
 static int sched_debug_open(struct inode *inode, struct file *filp)
 {

@@ -1197,6 +1197,14 @@ int config_ppp_op_mode(struct ppp_blit_op *blit_op)
 
 	config_ppp_blend(blit_op, &ppp_operation_reg);
 
+/*20131119 tracy add for fix screen will flash after press video icon to start/end a video call in Hangouts.*/
+  if (blit_op->solid_fill) {
+               if (blit_op->src.color_fmt == MDP_RGBA_8888)
+                       blit_op->src.color_fmt = MDP_RGBX_8888;
+               if (blit_op->dst.color_fmt == MDP_RGBA_8888)
+                       blit_op->dst.color_fmt = MDP_RGBX_8888;
+       }
+  /*20131119 tracy add for fix screen will flash after press video icon to start/end a video call in Hangouts.*/
 	config_ppp_src(&blit_op->src);
 	config_ppp_out(&blit_op->dst);
 	PPP_WRITEL(ppp_operation_reg, MDP3_PPP_OP_MODE);

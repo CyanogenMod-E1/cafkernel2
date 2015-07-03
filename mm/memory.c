@@ -114,6 +114,10 @@ __setup("norandmaps", disable_randmaps);
 unsigned long zero_pfn __read_mostly;
 unsigned long highest_memmap_pfn __read_mostly;
 
+/*<<Skies-2013/07/10, record the count of bad_page*/
+extern unsigned int badpage_cnt;
+/*>>Skies-2013/07/10, record the count of bad_page*/
+
 /*
  * CONFIG_MMU architectures set up ZERO_PAGE in their paging_init()
  */
@@ -687,6 +691,10 @@ static void print_bad_pte(struct vm_area_struct *vma, unsigned long addr,
 
 	mapping = vma->vm_file ? vma->vm_file->f_mapping : NULL;
 	index = linear_page_index(vma, addr);
+	
+/*<<Skies-2013/07/10, record the count of bad_page*/
+	badpage_cnt++;
+/*>>Skies-2013/07/10, record the count of bad_page*/
 
 	printk(KERN_ALERT
 		"BUG: Bad page map in process %s  pte:%08llx pmd:%08llx\n",

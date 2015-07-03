@@ -21,7 +21,7 @@
 #include <linux/io.h>
 
 #include <mach/msm_ipc_logging.h>
-#include <smd_private.h>
+#include "smd_private.h"//2014/1/21 starhu fix kernal only build error: use "" instead of <>
 
 #define MODULE_NAME "msm_smd"
 #define IPC_LOG(level, x...) do { \

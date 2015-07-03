@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -44,6 +44,65 @@
    and provided to the battery driver in the units desired for
    their framework which is 0.1DegC. True resolution of 0.1DegC
    will result in the below table size to increase by 10 times */
+
+//[Arima Patch] 20130729 modify temperature table relate with ADC by Abner ++     			
+#if 1
+static const struct qpnp_vadc_map_pt adcmap_btm_threshold1[] =
+{		
+   {  -200, 1045 },	
+   {  -150, 1029 },
+   {  -100, 1009 },	
+   {  -50, 989   },	
+   {    0, 973 },
+   {   50, 947 },
+   {  100, 920 },
+   {  150, 894 },
+   {  200, 869 },
+   {  250, 845 },
+   {  300, 824 },
+   {  350, 805 },
+   {  400, 788 },
+   {  450, 773 },
+   {  500, 761 },
+   {  550, 750 },
+   {  600, 741 },
+   {  650, 733 },
+   {  700, 727 }, 
+};
+static const struct qpnp_vadc_map_pt adcmap_btm_threshold2[] =
+{		
+   {  -200,	1401 },	
+   {  -150,	1377 },
+   {  -100,	1350 },	
+   {  -50,	1327 },	
+   {  0,	1307 },	 
+   {  50,	1294 },
+   {  100,	1279 },
+   {  150,	1262 },
+   {  200,	1244 },
+   {  250,	1226 },
+   {  300,	1207 },
+   {  350,	1190 },
+   {  400,	1174 },
+   {  450,	1159 },
+   {  500,	1145 },
+   {  550,	1134 },
+   {  600,	1124 },
+   {  650,	1115 },
+   {  700,	1107 }
+};
+
+static const struct qpnp_vadc_map_pt adcmap_btm_threshold3[] =
+
+{	
+   {  2550, 1800 }
+
+};
+
+#endif
+//[Arima Patch] 20130729 modify temperature table relate with ADC by Abner ++   
+ 
+//default   
 static const struct qpnp_vadc_map_pt adcmap_btm_threshold[] = {
 	{-300,	1642},
 	{-200,	1544},
@@ -236,60 +295,6 @@ static const struct qpnp_vadc_map_pt adcmap_qrd_skuaa_btm_threshold[] = {
 	{760,	559},
 	{780,	554},
 	{800,	549},
-};
-
-static const struct qpnp_vadc_map_pt adcmap_qrd_skug_btm_threshold[] = {
-	{-200,	1338},
-	{-180,	1307},
-	{-160,	1276},
-	{-140,	1244},
-	{-120,	1213},
-	{-100,	1182},
-	{-80,	1151},
-	{-60,	1121},
-	{-40,	1092},
-	{-20,	1063},
-	{0,	1035},
-	{20,	1008},
-	{40,	982},
-	{60,	957},
-	{80,	933},
-	{100,	910},
-	{120,	889},
-	{140,	868},
-	{160,	848},
-	{180,	830},
-	{200,	812},
-	{220,	795},
-	{240,	780},
-	{260,	765},
-	{280,	751},
-	{300,	738},
-	{320,	726},
-	{340,	714},
-	{360,	704},
-	{380,	694},
-	{400,	684},
-	{420,	675},
-	{440,	667},
-	{460,	659},
-	{480,	652},
-	{500,	645},
-	{520,	639},
-	{540,	633},
-	{560,	627},
-	{580,	622},
-	{600,	617},
-	{620,	613},
-	{640,	608},
-	{660,	604},
-	{680,	600},
-	{700,	597},
-	{720,	593},
-	{740,	590},
-	{760,	587},
-	{780,	585},
-	{800,	582},
 };
 
 /* Voltage to temperature */
@@ -496,8 +501,7 @@ int32_t qpnp_adc_scale_pmic_therm(struct qpnp_vadc_chip *vadc,
 
 	if (!chan_properties || !chan_properties->offset_gain_numerator ||
 		!chan_properties->offset_gain_denominator || !adc_properties
-		|| !adc_chan_result
-		|| !chan_properties->adc_graph[CALIB_ABSOLUTE].dy)
+		|| !adc_chan_result)
 		return -EINVAL;
 
 	pmic_voltage = (adc_code -
@@ -621,11 +625,32 @@ int32_t qpnp_adc_scale_batt_therm(struct qpnp_vadc_chip *chip,
 	bat_voltage = qpnp_adc_scale_ratiometric_calib(adc_code,
 			adc_properties, chan_properties);
 
-	return qpnp_adc_map_temp_voltage(
-			adcmap_btm_threshold,
-			ARRAY_SIZE(adcmap_btm_threshold),
-			bat_voltage,
-			&adc_chan_result->physical);
+//[Arima Patch] 20130729 modify temperature of battery type detect by Abner ++  
+   	if(bat_voltage>727 && bat_voltage<1045 )
+		{
+      	return qpnp_adc_map_temp_voltage(
+      			adcmap_btm_threshold1,
+      			ARRAY_SIZE(adcmap_btm_threshold1),
+      			bat_voltage,
+      			&adc_chan_result->physical);					
+	
+   		}else if(bat_voltage>1107 && bat_voltage<1451)
+   			{
+      	return qpnp_adc_map_temp_voltage(
+      			adcmap_btm_threshold2,
+      			ARRAY_SIZE(adcmap_btm_threshold2),
+      			bat_voltage,
+      			&adc_chan_result->physical);	
+   			}
+			else
+			{	
+      	return qpnp_adc_map_temp_voltage(
+      			adcmap_btm_threshold3,
+      			ARRAY_SIZE(adcmap_btm_threshold3),
+      			bat_voltage,
+      			&adc_chan_result->physical);	
+			}
+//[Arima Patch] 20130729 modify temperature of battery type detect by Abner ++  		
 }
 EXPORT_SYMBOL(qpnp_adc_scale_batt_therm);
 
@@ -667,24 +692,6 @@ int32_t qpnp_adc_scale_qrd_skuaa_batt_therm(struct qpnp_vadc_chip *chip,
 }
 EXPORT_SYMBOL(qpnp_adc_scale_qrd_skuaa_batt_therm);
 
-int32_t qpnp_adc_scale_qrd_skug_batt_therm(struct qpnp_vadc_chip *chip,
-		int32_t adc_code,
-		const struct qpnp_adc_properties *adc_properties,
-		const struct qpnp_vadc_chan_properties *chan_properties,
-		struct qpnp_vadc_result *adc_chan_result)
-{
-	int64_t bat_voltage = 0;
-
-	bat_voltage = qpnp_adc_scale_ratiometric_calib(adc_code,
-			adc_properties, chan_properties);
-
-	return qpnp_adc_map_temp_voltage(
-			adcmap_qrd_skug_btm_threshold,
-			ARRAY_SIZE(adcmap_qrd_skug_btm_threshold),
-			bat_voltage,
-			&adc_chan_result->physical);
-}
-EXPORT_SYMBOL(qpnp_adc_scale_qrd_skug_batt_therm);
 int32_t qpnp_adc_scale_therm_pu1(struct qpnp_vadc_chip *chip,
 		int32_t adc_code,
 		const struct qpnp_adc_properties *adc_properties,
@@ -985,92 +992,6 @@ int32_t qpnp_vadc_check_result(int32_t *data)
 	return 0;
 }
 EXPORT_SYMBOL(qpnp_vadc_check_result);
-
-int qpnp_adc_get_revid_version(struct device *dev)
-{
-	struct pmic_revid_data *revid_data;
-	struct device_node *revid_dev_node;
-
-	revid_dev_node = of_parse_phandle(dev->of_node,
-						"qcom,pmic-revid", 0);
-	if (!revid_dev_node) {
-		pr_debug("Missing qcom,pmic-revid property\n");
-		return -EINVAL;
-	}
-
-	revid_data = get_revid_data(revid_dev_node);
-	if (IS_ERR(revid_data)) {
-		pr_debug("revid error rc = %ld\n", PTR_ERR(revid_data));
-		return -EINVAL;
-	}
-
-	if ((revid_data->rev1 == PM8941_V3P1_REV1) &&
-		(revid_data->rev2 == PM8941_V3P1_REV2) &&
-		(revid_data->rev3 == PM8941_V3P1_REV3) &&
-		(revid_data->rev4 == PM8941_V3P1_REV4) &&
-		(revid_data->pmic_type == PM8941_V3P1_TYPE) &&
-		(revid_data->pmic_subtype == PM8941_V3P1_SUBTYPE))
-			return QPNP_REV_ID_8941_3_1;
-	else if ((revid_data->rev1 == PM8941_V3P0_REV1) &&
-		(revid_data->rev2 == PM8941_V3P0_REV2) &&
-		(revid_data->rev3 == PM8941_V3P0_REV3) &&
-		(revid_data->rev4 == PM8941_V3P0_REV4) &&
-		(revid_data->pmic_type == PM8941_V3P0_TYPE) &&
-		(revid_data->pmic_subtype == PM8941_V3P0_SUBTYPE))
-			return QPNP_REV_ID_8941_3_0;
-	else if ((revid_data->rev1 == PM8941_V2P0_REV1) &&
-		(revid_data->rev2 == PM8941_V2P0_REV2) &&
-		(revid_data->rev3 == PM8941_V2P0_REV3) &&
-		(revid_data->rev4 == PM8941_V2P0_REV4) &&
-		(revid_data->pmic_type == PM8941_V2P0_TYPE) &&
-		(revid_data->pmic_subtype == PM8941_V2P0_SUBTYPE))
-			return QPNP_REV_ID_8941_2_0;
-	else if ((revid_data->rev1 == PM8226_V2P2_REV1) &&
-		(revid_data->rev2 == PM8226_V2P2_REV2) &&
-		(revid_data->rev3 == PM8226_V2P2_REV3) &&
-		(revid_data->rev4 == PM8226_V2P2_REV4) &&
-		(revid_data->pmic_type == PM8226_V2P2_TYPE) &&
-		(revid_data->pmic_subtype == PM8226_V2P2_SUBTYPE))
-			return QPNP_REV_ID_8026_2_2;
-	else if ((revid_data->rev1 == PM8226_V2P1_REV1) &&
-		(revid_data->rev2 == PM8226_V2P1_REV2) &&
-		(revid_data->rev3 == PM8226_V2P1_REV3) &&
-		(revid_data->rev4 == PM8226_V2P1_REV4) &&
-		(revid_data->pmic_type == PM8226_V2P1_TYPE) &&
-		(revid_data->pmic_subtype == PM8226_V2P1_SUBTYPE))
-			return QPNP_REV_ID_8026_2_1;
-	else if ((revid_data->rev1 == PM8226_V2P0_REV1) &&
-		(revid_data->rev2 == PM8226_V2P0_REV2) &&
-		(revid_data->rev3 == PM8226_V2P0_REV3) &&
-		(revid_data->rev4 == PM8226_V2P0_REV4) &&
-		(revid_data->pmic_type == PM8226_V2P0_TYPE) &&
-		(revid_data->pmic_subtype == PM8226_V2P0_SUBTYPE))
-			return QPNP_REV_ID_8026_2_0;
-	else if ((revid_data->rev1 == PM8226_V1P0_REV1) &&
-		(revid_data->rev2 == PM8226_V1P0_REV2) &&
-		(revid_data->rev3 == PM8226_V1P0_REV3) &&
-		(revid_data->rev4 == PM8226_V1P0_REV4) &&
-		(revid_data->pmic_type == PM8226_V1P0_TYPE) &&
-		(revid_data->pmic_subtype == PM8226_V1P0_SUBTYPE))
-			return QPNP_REV_ID_8026_1_0;
-	else if ((revid_data->rev1 == PM8110_V1P0_REV1) &&
-		(revid_data->rev2 == PM8110_V1P0_REV2) &&
-		(revid_data->rev3 == PM8110_V1P0_REV3) &&
-		(revid_data->rev4 == PM8110_V1P0_REV4) &&
-		(revid_data->pmic_type == PM8110_V1P0_TYPE) &&
-		(revid_data->pmic_subtype == PM8110_V1P0_SUBTYPE))
-			return QPNP_REV_ID_8110_1_0;
-	else if ((revid_data->rev1 == PM8110_V2P0_REV1) &&
-		(revid_data->rev2 == PM8110_V2P0_REV2) &&
-		(revid_data->rev3 == PM8110_V2P0_REV3) &&
-		(revid_data->rev4 == PM8110_V2P0_REV4) &&
-		(revid_data->pmic_type == PM8110_V2P0_TYPE) &&
-		(revid_data->pmic_subtype == PM8110_V2P0_SUBTYPE))
-			return QPNP_REV_ID_8110_2_0;
-	else
-		return -EINVAL;
-}
-EXPORT_SYMBOL(qpnp_adc_get_revid_version);
 
 int32_t qpnp_adc_get_devicetree_data(struct spmi_device *spmi,
 			struct qpnp_adc_drv *adc_qpnp)

@@ -70,3 +70,16 @@ obj-$(CONFIG_QSEECOM) += qseecom.o
 obj-$(CONFIG_QFP_FUSE) += qfp_fuse.o
 obj-$(CONFIG_TI_DRV2667) += ti_drv2667.o
 obj-$(CONFIG_QPNP_MISC) += qpnp-misc.o
+# /*++ Huize - 20130702 Add for magnetic sensor ++*/
+obj-$(CONFIG_SENSORS_AK8963)	+= akm8963.o
+# /*-- Huize - 20130702 Add for magnetic sensor --*/
+# + murphy 2013.07.19
+# Added enabling for GPS eLNA driver
+obj-$(CONFIG_ARIMA_GPS_ELNA) += gps_elna.o
+# - murphy 2011.07.19
+#/*--Flea--20130809 sec source++*/
+#obj-$(CONFIG_SENSORS_MMC3416XPJ_MAG)	+= mmc3416x.o mecs.o
+#/*--Flea--20130809 sec source--*/
+# /*++ Huize - 20130916 Add for processing package event ++*/
+obj-y				+= postoffice.o
+# /*-- Huize - 20130916 Add for processing package event --*/

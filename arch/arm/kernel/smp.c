@@ -683,7 +683,13 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 		break;
 
 	case IPI_CPU_BACKTRACE:
+        /* 20131115-JordanChen , Avoid trigger_all_cpu_backtrace be called in other CPUs at the same time */
+        irq_enter();
+        /* 20131115-JordanChen , Avoid trigger_all_cpu_backtrace be called in other CPUs at the same time */
 		ipi_cpu_backtrace(cpu, regs);
+        /* 20131115-JordanChen , Avoid trigger_all_cpu_backtrace be called in other CPUs at the same time */
+		irq_exit();
+        /* 20131115-JordanChen , Avoid trigger_all_cpu_backtrace be called in other CPUs at the same time */
 		break;
 
 	default:

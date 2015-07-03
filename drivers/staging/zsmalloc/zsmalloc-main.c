@@ -429,7 +429,7 @@ static struct page *get_next_page(struct page *page)
 
 	return next;
 }
-
+//add by alreoryuan for zram patch,change zram to qco zram patch begin
 /*
  * Encode <page, obj_idx> as a single handle value.
  * On hardware platforms with physical memory starting at 0x0 the pfn
@@ -450,7 +450,6 @@ static void *obj_location_to_handle(struct page *page, unsigned long obj_idx)
 
 	return (void *)handle;
 }
-
 /*
  * Decode <page, obj_idx> pair from the given object handle. We adjust the
  * decoded obj_idx back to its original value since it was adjusted in
@@ -463,6 +462,7 @@ static void obj_handle_to_location(unsigned long handle, struct page **page,
 	*obj_idx = (handle & OBJ_INDEX_MASK) - 1;
 }
 
+//add by alreoryuan for zram patch,change zram to qco zram patch end
 static unsigned long obj_idx_to_offset(struct page *page,
 				unsigned long obj_idx, int class_size)
 {
@@ -481,7 +481,9 @@ static void reset_page(struct page *page)
 	set_page_private(page, 0);
 	page->mapping = NULL;
 	page->freelist = NULL;
+//add by alreoryuan for zram patch,change zram to qco zram patch begin
 	reset_page_mapcount(page);
+//add by alreoryuan for zram patch,change zram to qco zram patch end
 }
 
 static void free_zspage(struct page *first_page)

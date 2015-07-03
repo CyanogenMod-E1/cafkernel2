@@ -14,6 +14,9 @@
 #include <asm/page.h>
 
 
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+#include <linux/vmalloc.h>
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
 /*
  * seq_files have a buffer which can may overflow. When this happens a larger
  * buffer is reallocated and all the data will be printed again.
@@ -48,7 +51,17 @@ int seq_open(struct file *file, const struct seq_operations *op)
 	struct seq_file *p = file->private_data;
 
 	if (!p) {
-		p = kmalloc(sizeof(*p), GFP_KERNEL);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+/*        p = kmalloc(sizeof(*p), GFP_KERNEL);*/
+        if (sizeof(*p) > 2 * PAGE_SIZE) {
+            p = vmalloc(sizeof(*p));
+        } else
+            p = kmalloc(sizeof(*p), GFP_KERNEL);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+
+
+
+
 		if (!p)
 			return -ENOMEM;
 		file->private_data = p;
@@ -131,8 +144,21 @@ static int traverse(struct seq_file *m, loff_t offset)
 
 Eoverflow:
 	m->op->stop(m, p);
-	kfree(m->buf);
-	m->buf = kmalloc(m->size <<= 1, GFP_KERNEL);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+/*    kfree(m->buf);*/
+/*    m->buf = kmalloc(m->size <<= 1, GFP_KERNEL);*/
+        if (m->size > 2 * PAGE_SIZE) {
+            vfree(m->buf);
+        } else
+            kfree(m->buf);
+        m->size <<= 1;
+        if (m->size > 2 * PAGE_SIZE) {
+            m->buf = vmalloc(m->size);
+        } else
+            m->buf = kmalloc(m->size , GFP_KERNEL);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+
+
 	return !m->buf ? -ENOMEM : -EAGAIN;
 }
 
@@ -227,8 +253,21 @@ ssize_t seq_read(struct file *file, char __user *buf, size_t size, loff_t *ppos)
 		if (m->count < m->size)
 			goto Fill;
 		m->op->stop(m, p);
-		kfree(m->buf);
-		m->buf = kmalloc(m->size <<= 1, GFP_KERNEL);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+/*        kfree(m->buf);*/
+/*        m->buf = kmalloc(m->size <<= 1, GFP_KERNEL);*/
+
+        if (m->size > 2 * PAGE_SIZE) {
+            vfree(m->buf);
+        } else
+            kfree(m->buf);
+        m->size <<= 1;
+        if (m->size > 2 * PAGE_SIZE) {
+            m->buf = vmalloc(m->size);
+        } else
+            m->buf = kmalloc(m->size , GFP_KERNEL);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+
 		if (!m->buf)
 			goto Enomem;
 		m->count = 0;
@@ -343,7 +382,14 @@ EXPORT_SYMBOL(seq_lseek);
 int seq_release(struct inode *inode, struct file *file)
 {
 	struct seq_file *m = file->private_data;
-	kfree(m->buf);
+/*    kfree(m->buf);*/
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+    if (m->size > 2 * PAGE_SIZE) {
+        vfree(m->buf);
+    } else
+        kfree(m->buf);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+
 	kfree(m);
 	return 0;
 }
@@ -567,8 +613,17 @@ static void single_stop(struct seq_file *p, void *v)
 int single_open(struct file *file, int (*show)(struct seq_file *, void *),
 		void *data)
 {
-	struct seq_operations *op = kmalloc(sizeof(*op), GFP_KERNEL);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+/*    struct seq_operations *op = kmalloc(sizeof(*op), GFP_KERNEL);*/
+	struct seq_operations *op = NULL;
 	int res = -ENOMEM;
+
+    if (sizeof(*op) > 2 * PAGE_SIZE) {
+        op = vmalloc(sizeof(*op));
+    } else
+        op = kmalloc(sizeof(*op), GFP_KERNEL);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+
 
 	if (op) {
 		op->start = single_start;
@@ -579,7 +634,22 @@ int single_open(struct file *file, int (*show)(struct seq_file *, void *),
 		if (!res)
 			((struct seq_file *)file->private_data)->private = data;
 		else
-			kfree(op);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+/*            kfree(op);*/
+        {
+            if (sizeof(*op) > 2 * PAGE_SIZE) {
+                vfree(op);
+            } else
+                kfree(op);
+        }
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+
+
+
+
+
+
+
 	}
 	return res;
 }
@@ -589,7 +659,13 @@ int single_release(struct inode *inode, struct file *file)
 {
 	const struct seq_operations *op = ((struct seq_file *)file->private_data)->op;
 	int res = seq_release(inode, file);
-	kfree(op);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+/*    kfree(op);*/
+    if (sizeof(*op) > 2 * PAGE_SIZE) {
+        vfree(op);
+    } else
+        kfree(op);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
 	return res;
 }
 EXPORT_SYMBOL(single_release);
@@ -598,7 +674,13 @@ int seq_release_private(struct inode *inode, struct file *file)
 {
 	struct seq_file *seq = file->private_data;
 
-	kfree(seq->private);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+/*    kfree(seq->private);*/
+    if (sizeof(*(seq->private)) > 2 * PAGE_SIZE) {
+        vfree(seq->private);
+    } else
+        kfree(seq->private);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
 	seq->private = NULL;
 	return seq_release(inode, file);
 }
@@ -624,7 +706,13 @@ void *__seq_open_private(struct file *f, const struct seq_operations *ops,
 	return private;
 
 out_free:
-	kfree(private);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
+/*    kfree(private);*/
+    if (sizeof(*private) > 2 * PAGE_SIZE) {
+        kfree(private);
+    } else
+        kfree(private);
+/*  20130924-JordanChen , Avoid to use kfree and kmalloc for high order memory allocation */
 out:
 	return NULL;
 }

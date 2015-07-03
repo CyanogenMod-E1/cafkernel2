@@ -40,7 +40,6 @@
 #include <linux/mutex.h>
 #include <linux/delay.h>
 #include <linux/swap.h>
-#include <linux/fs.h>
 
 #ifdef CONFIG_HIGHMEM
 #define _ZONE ZONE_HIGHMEM
@@ -66,6 +65,22 @@ static int lowmem_minfree_size = 4;
 static int lmk_fast_run = 1;
 
 static unsigned long lowmem_deathpending_timeout;
+
+//<2013/12/19-MajorChen-32238, for walkman be killed when switching.
+static unsigned long long musicplayer_last_notplay_time_ns = 0;
+//>2013/12/19-MajorChen-32238, for walkman be killed when switching.
+
+//<2013/12/24-MajorChen-32377, for picasa be killed when switching upload.
+static unsigned long long picasa_last_finish_time_ns = 0;
+//>2013/12/24-MajorChen-32377, for picasa be killed when switching upload.
+
+//<2014/01/09-MajorChen-32897, for r2r be killed when downloading settings.
+static unsigned long long r2r_last_finish_time_ns = 0;
+//>2014/01/09-MajorChen-32897, for r2r be killed when downloading settings
+
+//<2014/01/15-MajorChen-33074, for conversation failed to receive sms and mms issue.
+static unsigned long long conversations_last_finish_time_ns = 0;
+//>2014/01/15-MajorChen-33074, for conversation failed to receive sms and mms issue.
 
 #define lowmem_print(level, x...)			\
 	do {						\
@@ -240,6 +255,12 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	int other_free;
 	int other_file;
 	unsigned long nr_to_scan = sc->nr_to_scan;
+	//<2013/12/06-StevenShi-31895, for walkman not be killed when playing, but if not play, allow LMK kill it.
+	int reserve_wm = 0;
+	//>2013/12/06-StevenShi-31895, for walkman not be killed when playing, but if not play, allow LMK kill it.
+	//<2013/12/19-MajorChen-32238, for walkman be killed when switching.
+       unsigned long long current_time_ns = 0;
+       //>2013/12/19-MajorChen-32238, for walkman be killed when switching.
 
 	if (nr_to_scan > 0) {
 		if (mutex_lock_interruptible(&scan_mutex) < 0)
@@ -247,14 +268,8 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	}
 
 	other_free = global_page_state(NR_FREE_PAGES);
-
-	if (global_page_state(NR_SHMEM) + total_swapcache_pages <
-		global_page_state(NR_FILE_PAGES))
-		other_file = global_page_state(NR_FILE_PAGES) -
-						global_page_state(NR_SHMEM) -
-						total_swapcache_pages;
-	else
-		other_file = 0;
+	other_file = global_page_state(NR_FILE_PAGES) -
+						global_page_state(NR_SHMEM);
 
 	tune_lmk_param(&other_free, &other_file, sc);
 
@@ -314,6 +329,187 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		if (!p)
 			continue;
 
+/*  20131030-JordanChen , Ignore bugreport , in order to have bugreport to analysis issue */
+/*  TODO:It is temporary solution , and need to remove when finish memory reduction !!!!!!!!!!*/
+        if (!strcmp(p->comm,"bugreport"))
+        {
+            task_unlock(p);
+            continue;
+        }
+/*  20131030-JordanChen , Ignore bugreport , in order to have bugreport to analysis issue */
+
+		//<2013/12/02-StevenShi-31749, for walkman not be killed when in low memory.
+		//<2013/12/06-StevenShi-31895, for walkman not be killed when playing, but if not play, allow LMK kill it.
+		if (!strcmp(p->comm,"yericsson.music"))
+		{
+			if (2 >= p->signal->oom_adj)  //is playing
+			{
+			        musicplayer_last_notplay_time_ns = 0;
+				reserve_wm = 1;
+				task_unlock(p);
+				continue;
+			} else {
+			       //<2013/12/19-MajorChen-32238, for walkman be killed when switching.
+			       //maybe walkman is switching songs, don't kill it asap.
+			       current_time_ns = sched_clock();
+			       //lowmem_print(3, "lowmem_shrink sony music running. current_time_ns=%llu ns,lastime=%llu ns, diff=%llu ns\n",current_time_ns,musicplayer_last_notplay_time_ns,(current_time_ns - musicplayer_last_notplay_time_ns));
+			       
+			       if(0 != musicplayer_last_notplay_time_ns){
+			             // if it is more than 6s,then let it go, 1s is not enough, found 1.3s  failcase. 2s is not enough, make 4s improve for voice search case
+			             if((current_time_ns - musicplayer_last_notplay_time_ns) > (unsigned long long)((6000ULL)*(1000ULL)*(1000ULL))) 
+			             {
+			                 //lowmem_print(3, "lowmem_shrink sony music running....kill it,no running\n");
+			             }
+			             else  // maybe it is switching.
+			             {
+			                  //lowmem_print(3, "lowmem_shrink sony music running....Don't kill it,  running\n");
+			                  reserve_wm = 1;
+			                  task_unlock(p);
+			                  continue;
+			             }
+			       }
+			       else{  //may it is switching
+			           //lowmem_print(3, "lowmem_shrink sony music running....Don't kill ,may running\n");
+			           
+			           musicplayer_last_notplay_time_ns = current_time_ns;
+			           reserve_wm = 1;
+			           task_unlock(p);
+			           continue;
+			       }
+				reserve_wm = 0;
+				//>2013/12/19-MajorChen-32238, for walkman be killed when switching.
+			}
+		}
+		if ((!strcmp(p->comm,"d.process.media")) && (1 == reserve_wm))
+		{
+            task_unlock(p);
+            continue;
+		}
+		//>2013/12/06-StevenShi-31895, for walkman not be killed when playing, but if not play, allow LMK kill it.
+		//>2013/12/02-StevenShi-31749, for walkman not be killed when in low memory.
+
+
+               //<2013/12/24-MajorChen-32377, for picasa be killed when switching upload.
+               /*by major, for Picasa Uploader client ,it's hidden app, adj 0, 2(working)--9,11,13,15(one shot) */
+               if (!strcmp(p->comm,"d.apps.uploader"))
+              {
+                      int is_uploader_ignored = 1;
+			if (2 >= p->signal->oom_adj)  //is uploading
+			{
+			        //lowmem_print(3, "lowmem_shrink uploader running....Don't kill ,running\n");
+			        picasa_last_finish_time_ns = 0;
+			} else {
+			       //maybe uploader is switching upload task, don't kill it asap.
+			       current_time_ns = sched_clock();
+			       //lowmem_print(3, "lowmem_shrink uploader running. current_time_ns=%llu ns,lastime=%llu ns, diff=%llu ns\n",current_time_ns,picasa_last_finish_time_ns,(current_time_ns - picasa_last_finish_time_ns));
+			       
+			       if(0 != picasa_last_finish_time_ns){
+			             // if it is more than 30s, then allow to kill it,  3s is not enough....
+			             if((current_time_ns - picasa_last_finish_time_ns) > (unsigned long long)(((30000ULL)*(1000ULL)*(1000ULL))))    //30000*1000*1000
+			             {
+			                 //lowmem_print(3, "lowmem_shrink uploader running....kill it,no running\n");
+			                 is_uploader_ignored = 0;
+			             }
+			             else  // maybe it is switching.
+			             {
+			                  //lowmem_print(3, "lowmem_shrink uploader running....Don't kill it,  running\n");
+			             }
+			       }
+			       else{  //may it is switching to next upload
+			           //lowmem_print(3, "lowmem_shrink uploader running....Don't kill ,may running\n");
+			           
+			           picasa_last_finish_time_ns = current_time_ns;
+			       }
+	
+			}
+
+			if(is_uploader_ignored != 0){
+			       task_unlock(p);
+			       continue;
+			}
+		}
+               //>2013/12/24-MajorChen-32377, for picasa be killed when switching upload.
+
+
+               //<2014/01/09-MajorChen-32897, for r2r be killed when downloading settings.
+               //<6>[  584.483147] send sigkill to 10476 (sson.r2r.client), adj 647, size 4316
+               /*by major, for R2R client ,it's background app, adj 0, 2(working)--11,13,15(one shot) */
+               if (!strcmp(p->comm,"sson.r2r.client"))
+              {
+                      int is_r2r_ignored = 1;
+			if (2 >= p->signal->oom_adj)  //is downloading
+			{
+			        //lowmem_print(3, "lowmem_shrink r2r running....Don't kill ,running\n");
+			        r2r_last_finish_time_ns = 0;
+			} else {
+			       //maybe r2r is downloading sleep, don't kill it asap.
+			       current_time_ns = sched_clock();
+			       //lowmem_print(3, "lowmem_shrink r2r running. current_time_ns=%llu ns,lastime=%llu ns, diff=%llu ns\n",current_time_ns,r2r_last_finish_time_ns,(current_time_ns - r2r_last_finish_time_ns));
+			       
+			       if(0 != r2r_last_finish_time_ns){
+			             // if it is more than 10s, then allow to kill it,  ....
+			             if((current_time_ns - r2r_last_finish_time_ns) > (unsigned long long)(((10000ULL)*(1000ULL)*(1000ULL))))    //10000*1000*1000
+			             {
+			                 //lowmem_print(3, "lowmem_shrink r2r running....kill it,no running\n");
+			                 is_r2r_ignored = 0;
+			             }
+			             else  // maybe it is sleep.
+			             {
+			                  //lowmem_print(3, "lowmem_shrink r2r running....Don't kill it,  running\n");
+			             }
+			       }
+			       else{  //may it is downloading sleep
+			           //lowmem_print(3, "lowmem_shrink r2r running....Don't kill ,may running\n");
+			           
+			           r2r_last_finish_time_ns = current_time_ns;
+			       }
+	
+			}
+
+			if(is_r2r_ignored != 0){
+			       task_unlock(p);
+			       continue;
+			}
+		}
+               //>2014/01/09-MajorChen-32897, for r2r be killed when downloading settings.
+
+               //<2014/01/15-MajorChen-33074, for conversation failed to receive sms and mms issue.
+               //<6>[ 4880.412277] send sigkill to 11044 (n.conversations), adj 411, size 6274
+               if (!strcmp(p->comm,"n.conversations"))
+              {
+                      int is_conversation_ignored = 1;
+			if (2 >= p->signal->oom_adj)  //is downloading
+			{
+			        conversations_last_finish_time_ns = 0;
+			} else {
+			       current_time_ns = sched_clock();
+			       
+			       if(0 != conversations_last_finish_time_ns){
+			             // if it is more than 3s, then allow to kill it,  ....
+			             if((current_time_ns - conversations_last_finish_time_ns) > (unsigned long long)(((3000ULL)*(1000ULL)*(1000ULL))))    //3000*1000*1000
+			             {
+			                 is_conversation_ignored = 0;
+			             }
+			             else  // maybe it is sleep.
+			             {
+			                  
+			             }
+			       }
+			       else{  //may it is downloading sleep
+			           
+			           conversations_last_finish_time_ns = current_time_ns;
+			       }
+	
+			}
+
+			if(is_conversation_ignored != 0){
+			       task_unlock(p);
+			       continue;
+			}
+		}
+               //>2014/01/15-MajorChen-33074, for conversation failed to receive sms and mms issue.
+
+
 		oom_score_adj = p->signal->oom_score_adj;
 		if (oom_score_adj < min_score_adj) {
 			task_unlock(p);
@@ -340,6 +536,14 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		lowmem_print(1, "send sigkill to %d (%s), adj %d, size %d\n",
 			     selected->pid, selected->comm,
 			     selected_oom_score_adj, selected_tasksize);
+
+		//<2013/12/24-MajorChen-32377, for picasa be killed when switching upload.	     
+		/*by major, if picasa uploader is killed then recalculate it*/
+		if (!strcmp(selected->comm,"d.apps.uploader")){
+		        picasa_last_finish_time_ns = 0;
+		}
+		//>2013/12/24-MajorChen-32377, for picasa be killed when switching upload.
+		
 		lowmem_deathpending_timeout = jiffies + HZ;
 		send_sig(SIGKILL, selected, 0);
 		set_tsk_thread_flag(selected, TIF_MEMDIE);

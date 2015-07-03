@@ -38,6 +38,12 @@
 #include "timer.h"
 #include "wdog_debug.h"
 
+// << FerryWu, 2013/09/17, create proc file for crash status
+#include <linux/proc_fs.h>
+#include <linux/string.h>
+#include <linux/uaccess.h>
+// >> FerryWu, 2013/09/17, create proc file for crash status
+
 #define WDT0_RST	0x38
 #define WDT0_EN		0x40
 #define WDT0_BARK_TIME	0x4C
@@ -66,6 +72,12 @@ void *restart_reason;
 int pmic_reset_irq;
 static void __iomem *msm_tmr0_base;
 
+// << FerryWu, 2013/09/17, create proc file for crash status
+static int crash_status = 0;
+#define CRASH_STATUS_BUF_SIZE 2
+static char crash_status_buf[CRASH_STATUS_BUF_SIZE+1];
+// >> FerryWu, 2013/09/17, create proc file for crash status
+
 #ifdef CONFIG_MSM_DLOAD_MODE
 static int in_panic;
 static void *dload_mode_addr;
@@ -91,10 +103,20 @@ static struct notifier_block panic_blk = {
 static void set_dload_mode(int on)
 {
 	if (dload_mode_addr) {
-		__raw_writel(on ? 0xE47B337D : 0, dload_mode_addr);
-		__raw_writel(on ? 0xCE14091A : 0,
-		       dload_mode_addr + sizeof(unsigned int));
-		mb();
+		if(on) {
+			__raw_writel(0xE47B337D, dload_mode_addr);
+			__raw_writel(0xCE14091A, dload_mode_addr + sizeof(unsigned int));
+			mb();
+			if((__raw_readl(dload_mode_addr)!= 0xE47B337D) || (__raw_readl(dload_mode_addr+0x4) != 0xCE14091A))
+				pr_err("WTF!!! DLOAD MODE VALUE IS NOT WHAT WE JUST SET IT TO BE\n");
+		}
+		else {
+			__raw_writel(0, dload_mode_addr);
+			__raw_writel(0,dload_mode_addr + sizeof(unsigned int));
+			mb();
+			if((__raw_readl(dload_mode_addr)!= 0x0) || (__raw_readl(dload_mode_addr+0x4) != 0x0))
+				pr_err("WTF!!! DLOAD MODE VALUE IS NOT WHAT WE JUST SET IT TO BE\n");
+		}
 		dload_mode_enabled = on;
 	}
 }
@@ -115,10 +137,6 @@ static void enable_emergency_dload_mode(void)
 		__raw_writel(EMERGENCY_DLOAD_MAGIC3,
 				emergency_dload_mode_addr +
 				(2 * sizeof(unsigned int)));
-
-		/* Need disable the pmic wdt, then the emergency dload mode
-		 * will not auto reset. */
-		qpnp_pon_wd_config(0);
 		mb();
 	}
 }
@@ -275,17 +293,24 @@ static void msm_restart_prepare(const char *cmd)
 	else
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
 
-	if (cmd != NULL) {
+	// << FerryWu, 2013/08/24, ramdumper customization
+	if (in_panic) {
+		__raw_writel(0xc0dedead, restart_reason);
+	} else if (cmd != NULL) {
+	//if (cmd != NULL) {
+	// >> FerryWu, 2013/08/24, ramdumper customization
 		if (!strncmp(cmd, "bootloader", 10)) {
 			__raw_writel(0x77665500, restart_reason);
 		} else if (!strncmp(cmd, "recovery", 8)) {
 			__raw_writel(0x77665502, restart_reason);
-		} else if (!strcmp(cmd, "rtc")) {
-			__raw_writel(0x77665503, restart_reason);
 		} else if (!strncmp(cmd, "oem-", 4)) {
 			unsigned long code;
 			code = simple_strtoul(cmd + 4, NULL, 16) & 0xff;
 			__raw_writel(0x6f656d00 | code, restart_reason);
+    /*++ MikeLin - 20130920 FoTA integration ++*/
+		} else if (!strncmp(cmd, "oemF", 4)) {
+			__raw_writel(0x6f656d46, restart_reason);
+    /*++ MikeLin - 20130920 FoTA integration ++*/
 		} else if (!strncmp(cmd, "edl", 3)) {
 			enable_emergency_dload_mode();
 		} else {
@@ -329,9 +354,59 @@ void msm_restart(char mode, const char *cmd)
 	printk(KERN_ERR "Restarting has failed\n");
 }
 
+// << FerryWu, 2013/09/17, create proc file for crash status
+void msm_set_crash_status(int status)
+{
+	crash_status = status;
+}
+EXPORT_SYMBOL(msm_set_crash_status);
+
+static ssize_t crash_status_read(struct file *file, char __user *buf, size_t len, loff_t *offset)
+{
+	loff_t pos = *offset;
+	ssize_t count;
+	size_t max = CRASH_STATUS_BUF_SIZE;
+
+	if (pos >= CRASH_STATUS_BUF_SIZE)
+		return 0;
+
+	count = min(len, max);
+	memset(crash_status_buf, 0, sizeof(crash_status_buf));
+
+	if ((msm_get_crash_status() == 1) || (crash_status == 1)) {
+		snprintf(crash_status_buf, sizeof(crash_status_buf), "1\n");
+	} else {
+		snprintf(crash_status_buf, sizeof(crash_status_buf), "0\n");
+	}
+
+	if (copy_to_user(buf, crash_status_buf, count))
+		return -EFAULT;
+
+	*offset += count;
+	return count;
+}
+
+static const struct file_operations crash_status_file_ops = {
+	.owner = THIS_MODULE,
+	.read = crash_status_read,
+};
+// >> FerryWu, 2013/09/17, create proc file for crash status
+
 static int __init msm_pmic_restart_init(void)
 {
 	int rc;
+	// << FerryWu, 2013/09/17, create proc file for crash status
+	struct proc_dir_entry *entry;
+	// >> FerryWu, 2013/09/17, create proc file for crash status
+
+	// << FerryWu, 2013/09/17, create proc file for crash status
+	entry = create_proc_entry("crash_status", S_IFREG | S_IRUGO, NULL);
+	if (!entry) {
+		pr_err("crash_status: failed to create proc entry\n");
+		return 0;
+	}
+	entry->proc_fops = &crash_status_file_ops;
+	// >> FerryWu, 2013/09/17, create proc file for crash status
 
 	if (use_restart_v2())
 		return 0;

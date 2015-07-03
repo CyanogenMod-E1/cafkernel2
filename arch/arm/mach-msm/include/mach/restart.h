@@ -28,5 +28,10 @@ void fsm_restart(char mode, const char *cmd);
 
 extern int pmic_reset_irq;
 
+// << FerryWu, 2013/09/17, create proc file for crash status
+extern void msm_set_crash_status(int status);
+extern int msm_get_crash_status(void);
+// >> FerryWu, 2013/09/17, create proc file for crash status
+
 #endif
 

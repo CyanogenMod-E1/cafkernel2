@@ -121,14 +121,14 @@ void __init msm8610_add_drivers(void)
 
 void __init msm8610_init(void)
 {
-	struct of_dev_auxdata *adata = msm8610_auxdata_lookup;
+	struct of_dev_auxdata *adata = msm8610_auxdata_lookup;	
 
 	if (socinfo_init() < 0)
 		pr_err("%s: socinfo_init() failed\n", __func__);
 
 	msm8610_init_gpiomux();
 	board_dt_populate(adata);
-	msm8610_add_drivers();
+	msm8610_add_drivers();	
 }
 
 static const char *msm8610_dt_match[] __initconst = {

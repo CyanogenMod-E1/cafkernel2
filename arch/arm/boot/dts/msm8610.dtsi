@@ -43,7 +43,6 @@
 /include/ "msm8610-smp2p.dtsi"
 /include/ "msm8610-bus.dtsi"
 /include/ "msm8610-mdss.dtsi"
-/include/ "msm-rdbg.dtsi"
 
 &soc {
 	#address-cells = <1>;
@@ -240,7 +239,6 @@
 		qcom,hsusb-otg-otg-control = <2>;
 		qcom,hsusb-otg-disable-reset;
 		qcom,dp-manual-pullup;
-		qcom,disable-retention-with-vdd-min;
 
 		qcom,msm-bus,name = "usb2";
 		qcom,msm-bus,num-cases = <2>;
@@ -255,25 +253,6 @@
 		compatible = "qcom,android-usb";
 		reg = <0xfe8050c8 0xc8>;
 		qcom,android-usb-swfi-latency = <1>;
-		qcom,streaming-func = "rndis";
-	};
-
-	rmtfs_sharedmem {
-		compatible = "qcom,sharedmem-uio";
-		reg = <0x0dc80000 0x00180000>;
-		reg-names = "rmtfs";
-	};
-
-	dsp_sharedmem {
-		compatible = "qcom,sharedmem-uio";
-		reg = <0x0dc60000 0x00020000>;
-		reg-names = "rfsa_dsp";
-	};
-
-	mdm_sharedmem {
-		compatible = "qcom,sharedmem-uio";
-		reg = <0x0dc60000 0x00020000>;
-		reg-names = "rfsa_mdm";
 	};
 
 	sdcc1: qcom,sdcc@f9824000 {
@@ -287,6 +266,8 @@
 		interrupt-names = "core_irq", "bam_irq";
 
 		vdd-supply = <&pm8110_l17>;
+		qcom,vdd-always-on; /* FerryWu, 2013/08/09, rollback to 1011 configuration to prevent eMMC initialization failure issue */
+		qcom,vdd-lpm-sup; /* FerryWu, 2013/08/09, rollback to 1011 configuration to prevent eMMC initialization failure issue */
 		qcom,vdd-voltage-level = <2900000 2900000>;
 		qcom,vdd-current-level = <9000 400000>;
 
@@ -305,7 +286,6 @@
 		qcom,bus-width = <8>;
 		qcom,nonremovable;
 		qcom,bus-speed-mode = "HS200_1p8v", "DDR_1p8v";
-		qcom,cpu-dma-latency-us = <701>;
 
 		status = "disabled";
 	};
@@ -339,7 +319,6 @@
 		qcom,xpc;
 		qcom,bus-speed-mode = "SDR12", "SDR25", "SDR50", "DDR50", "SDR104";
 		qcom,current-limit = <800>;
-		qcom,cpu-dma-latency-us = <701>;
 
 		status = "disabled";
 	};
@@ -353,7 +332,6 @@
 		interrupt-names = "hc_irq", "pwr_irq";
 
 		qcom,bus-width = <8>;
-		qcom,cpu-dma-latency-us = <701>;
 		status = "disabled";
 	};
 
@@ -366,7 +344,6 @@
 		interrupt-names = "hc_irq", "pwr_irq";
 
 		qcom,bus-width = <4>;
-		qcom,cpu-dma-latency-us = <701>;
 		status = "disabled";
 	};
 
@@ -447,6 +424,7 @@
 		compatible = "qcom,rpm-smd";
 		rpm-channel-name = "rpm_requests";
 		rpm-channel-type = <15>; /* SMD_APPS_RPM */
+		rpm-standalone;
 	};
 
 	qcom,bcl {
@@ -455,8 +433,40 @@
 
 	qcom,msm-mem-hole {
 		compatible = "qcom,msm-mem-hole";
-		qcom,memblock-remove = <0x08800000 0x5600000>; /* Address and Size of Hole */
+		// << FerryWu, 2013/08/15, preserve a fixed memory region to store data for ram dumper
+		// add memory hole 0x08700000 ~ 0x087FFFFF
+		// 20131121-Jordanchen , Remove black area of 16MB behind modem for AP
+		//qcom,memblock-remove = <0x08700000 0x100000 0x08800000 0x5600000>; /* Address and Size of Hole */
+		qcom,memblock-remove = <0x08700000 0x100000 0x08800000 0x2d00000 0x0c500000 0x1900000>; /* Address and Size of Hole */
+ 		// >> FerryWu, 2013/08/15, preserve a fixed memory region to store data for ram dumper
 	};
+
+	// << FerryWu, 2013/08/15, preserve a fixed memory region to store data for ram dumper
+	ram_console {
+		compatible = "qcom,ram-console";
+		qcom,memory-fixed = <0x08700000 0x40000>;
+	};
+
+	last_radio_log {
+		compatible = "qcom,last-radio-log";
+		qcom,memory-fixed = <0x08740000 0x40000>;
+	};
+
+	ramdumpinfo {
+		compatible = "qcom,ramdumpinfo";
+		qcom,memory-fixed = <0x08780000 0x200>;
+	};
+
+	productinfo {
+		compatible = "qcom,productinfo";
+		qcom,memory-fixed = <0x08780200 0x200>;
+	};
+
+	restart_parameters {
+		compatible = "qcom,restart-parameters";
+		qcom,memory-fixed = <0x087C0000 0x40000>;
+	};
+	// >> FerryWu, 2013/08/15, preserve a fixed memory region to store data for ram dumper
 
 	qcom,wdt@f9017000 {
 		compatible = "qcom,msm-watchdog";
@@ -467,39 +477,11 @@
 		qcom,ipi-ping;
 	};
 
-	qcom,clock-a7@f9011050 {
-		compatible = "qcom,clock-a7-8226";
+	qcom,acpuclk@f9011050 {
+		compatible = "qcom,acpuclk-a7";
 		reg = <0xf9011050 0x8>;
-		reg-names = "rcg-base";
-		clock-names = "clk-4", "clk-5";
-		qcom,speed0-bin-v0 =
-			<         0 0>,
-			< 384000000 1>,
-			< 787200000 2>,
-			<1190400000 3>;
-
-		cpu-vdd-supply = <&apc_vreg_corner>;
-	};
-
-	qcom,cpubw {
-		compatible = "qcom,cpubw";
-		qcom,cpu-mem-ports = <1 512>;
-		qcom,bw-tbl =
-			<  762 /* 100 MHz */ >,
-			< 1525 /* 200 MHz */ >,
-			< 2540 /* 333 MHz */ >;
-	};
-
-	qcom,msm-cpufreq@0 {
-		reg = <0 4>;
-		compatible = "qcom,msm-cpufreq";
-		qcom,cpufreq-table =
-			<  300000  762 >,
-			<  384000  762 >,
-			<  600000 1525 >,
-			<  787200 1525 >,
-			<  998400 2540 >,
-			< 1190400 2540 >;
+		reg-names = "rcg_base";
+		a7_cpu-supply = <&apc_vreg_corner>;
 	};
 
 	spmi_bus: qcom,spmi@fc4c0000 {
@@ -525,7 +507,9 @@
 		reg = <0xf9923000 0x1000>;
 		interrupt-names = "qup_err_intr";
 		interrupts = <0 95 0>;
-		qcom,i2c-bus-freq = <100000>;
+		/*Arima Edison modify i2c freq from 100000 to 400000++*/
+		qcom,i2c-bus-freq = <400000>;
+		/*Arima Edison modify i2c freq from 100000 to 400000--*/
 		qcom,i2c-src-freq = <19200000>;
 		qcom,sda-gpio = <&msmgpio 2 0>;
 		qcom,scl-gpio = <&msmgpio 3 0>;
@@ -555,28 +539,11 @@
 		reg = <0xf9928000 0x1000>;
 		interrupt-names = "qup_err_intr";
 		interrupts = <0 100 0>;
-		qcom,i2c-bus-freq = <100000>;
+		qcom,i2c-bus-freq = <400000>;
 		qcom,i2c-src-freq = <19200000>;
 		qcom,sda-gpio = <&msmgpio 16 0>;
 		qcom,scl-gpio = <&msmgpio 17 0>;
                 qcom,master-id = <86>;
-	};
-
-
-	i2c@f9924000 { /* BLSP-1 QUP-3 */
-		cell-index = <2>;
-		compatible = "qcom,i2c-qup";
-		#address-cells = <1>;
-		#size-cells = <0>;
-		reg-names = "qup_phys_addr";
-		reg = <0xf9924000 0x1000>;
-		interrupt-names = "qup_err_intr";
-		interrupts = <0 96 0>;
-		qcom,i2c-bus-freq = <100000>;
-		qcom,i2c-src-freq = <19200000>;
-		qcom,sda-gpio = <&msmgpio 8 0>;
-		qcom,scl-gpio = <&msmgpio 9 0>;
-		qcom,master-id = <86>;
 	};
 
 	i2c@f9925000 { /* BLSP-1 QUP-3 */
@@ -588,11 +555,12 @@
 		reg = <0xf9925000 0x1000>;
 		interrupt-names = "qup_err_intr";
 		interrupts = <0 97 0>;
-		qcom,i2c-bus-freq = <100000>;
+		/*++ Huize - 20130702 Add for QUP3 and modify freq to 400 MHZ ++*/
+		qcom,i2c-bus-freq = <400000>;
                 qcom,i2c-src-freq = <19200000>;
-                qcom,sda-gpio = <&msmgpio 10 0>;
-                qcom,scl-gpio = <&msmgpio 11 0>;
-		qcom,clk-ctl-xfer;
+		qcom,sda-gpio = <&msmgpio 10 0>;
+		qcom,scl-gpio = <&msmgpio 11 0>;
+		/*-- Huize - 20130702 Add for QUP3 and modify freq to 400 MHZ --*/
                 qcom,master-id = <86>;
 	};
 
@@ -613,7 +581,9 @@
 		qcom,gpio-cs0  = <&msmgpio 88 0>;
 
 		qcom,infinite-mode = <0>;
-		qcom,use-bam;
+		/*Arima Edison block it, since we do not need it++*/
+		/*qcom,use-bam;*/
+		/*Arima Edison block it, since we do not need it--*/
 		qcom,ver-reg-exists;
 		qcom,bam-consumer-pipe-index = <18>;
 		qcom,bam-producer-pipe-index = <19>;
@@ -649,16 +619,15 @@
 		qcom,model = "msm8x10-snd-card";
 	};
 
-	qti,msm-pcm {
-		compatible = "qti,msm-pcm-dsp";
-		qti,msm-pcm-dsp-id = <0>;
+	qcom,msm-pcm {
+		compatible = "qcom,msm-pcm-dsp";
+		qcom,msm-pcm-dsp-id = <0>;
 	};
 
-	qti,msm-pcm-low-latency {
-		compatible = "qti,msm-pcm-dsp";
-		qti,msm-pcm-dsp-id = <1>;
-		qti,msm-pcm-low-latency;
-		qti,latency-level = "ultra";
+	qcom,msm-pcm-low-latency {
+		compatible = "qcom,msm-pcm-dsp";
+		qcom,msm-pcm-dsp-id = <1>;
+		qcom,msm-pcm-low-latency;
 	};
 
 	qcom,msm-pcm-routing {
@@ -671,10 +640,6 @@
 
 	qcom,msm-compr-dsp {
 		compatible = "qcom,msm-compr-dsp";
-	};
-
-	qcom,msm-compress-dsp {
-		compatible = "qcom,msm-compress-dsp";
 	};
 
 	qcom,msm-voip-dsp {
@@ -769,11 +734,6 @@
 		qcom,msm-dai-q6-incall-music-rx {
 			compatible = "qcom,msm-dai-q6-dev";
 			qcom,msm-dai-q6-dev-id = <32773>;
-		};
-
-		qcom,msm-dai-q6-incall-music-2-rx {
-			compatible = "qcom,msm-dai-q6-dev";
-			qcom,msm-dai-q6-dev-id = <32770>;
 		};
 	};
 
@@ -914,16 +874,15 @@
 		qcom,disk-encrypt-pipe-pair = <2>;
 		qcom,hlos-ce-hw-instance = <0>;
 		qcom,qsee-ce-hw-instance = <0>;
-		qcom,support-bus-scaling;
 		qcom,msm-bus,name = "qseecom-noc";
 		qcom,msm-bus,num-cases = <4>;
 		qcom,msm-bus,active-only = <0>;
 		qcom,msm-bus,num-paths = <1>;
 		qcom,msm-bus,vectors-KBps =
 				<55 512 0 0>,
-				<55 512 0 0>,
-				<55 512 120000 1200000>,
-				<55 512 393600 3936000>;
+				<55 512 3936000 393600>,
+				<55 512 3936000 393600>,
+				<55 512 3936000 393600>;
 	};
 
         qcom,msm-rng@f9bff000 {
@@ -1179,7 +1138,6 @@
 		qcom,hw-settle-time = <2>;
 		qcom,fast-avg-setup = <3>;
 		qcom,btm-channel-number = <0x48>;
-		qcom,meas-interval-timer-idx = <2>;
 	};
 
 	chan@8 {

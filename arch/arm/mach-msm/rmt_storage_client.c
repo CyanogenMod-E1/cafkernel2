@@ -21,6 +21,11 @@
 #include <linux/types.h>
 #include <linux/mm.h>
 #include <linux/fs.h>
+// << FerryWu, 2013/03/05, fix "NV items cannot be reset by factory reset" issue
+#if 0
+#include <linux/proc_fs.h>
+#endif
+// >> FerryWu, 2013/03/05, fix "NV items cannot be reset by factory reset" issue
 #include <linux/err.h>
 #include <linux/sched.h>
 #include <linux/wakelock.h>
@@ -118,6 +123,14 @@ static void rmt_storage_sdio_smem_work(struct work_struct *work);
 
 static struct rmt_storage_client_info *rmc;
 struct rmt_storage_srv *rmt_srv;
+
+// << FerryWu, 2013/03/05, fix "NV items cannot be reset by factory reset" issue
+#if 0
+#define PROCFS_NAME "rmt_reset"
+static struct proc_dir_entry *proc_rmt_reset;
+static uint32_t rmt_reset;
+#endif
+// >> FerryWu, 2013/03/05, fix "NV items cannot be reset by factory reset" issue
 
 #ifdef CONFIG_MSM_SDIO_SMEM
 DECLARE_DELAYED_WORK(sdio_smem_work, rmt_storage_sdio_smem_work);
@@ -1363,6 +1376,13 @@ static int rmt_storage_reboot_call(
 {
 	int ret, count = 0;
 
+	// << FerryWu, 2013/03/05, fix "NV items cannot be reset by factory reset" issue
+  #if 0
+	if (rmt_reset == 1)
+		return NOTIFY_DONE;
+  #endif
+	// >> FerryWu, 2013/03/05, fix "NV items cannot be reset by factory reset" issue
+
 	/*
 	 * In recovery mode RMT daemon is not available,
 	 * so return from reboot notifier without initiating
@@ -1752,6 +1772,31 @@ static uint32_t rmt_storage_get_sid(const char *path)
 	return 0;
 }
 
+// << FerryWu, 2013/03/05, fix "NV items cannot be reset by factory reset" issue
+#if 0
+/** 
+ * This function is called then the /proc file is read
+ *
+ */
+static int proc_rmt_reset_read(char *buffer, char **buffer_location,
+                         off_t offset, int buffer_length, int *eof, void *data)
+{
+        sprintf(buffer, "%d", rmt_reset);
+	return 1;
+}
+
+/**
+ * This function is called with the /proc file is written
+ *
+ */
+static int proc_rmt_reset_write(struct file *file, const char *buffer, unsigned long count, void *data)
+{
+	sscanf(buffer, "%d", &rmt_reset);
+	return 1;
+}
+#endif
+// >> FerryWu, 2013/03/05, fix "NV items cannot be reset by factory reset" issue
+
 static int __init rmt_storage_init(void)
 {
 #ifdef CONFIG_MSM_SDIO_SMEM
@@ -1816,6 +1861,27 @@ static int __init rmt_storage_init(void)
 	if (!stats_dentry)
 		pr_err("%s: Failed to create stats debugfs file\n", __func__);
 #endif
+
+	// << FerryWu, 2013/03/05, fix "NV items cannot be reset by factory reset" issue
+  #if 0
+	/* create the /proc file */
+	rmt_reset = 0;
+	proc_rmt_reset = create_proc_entry(PROCFS_NAME, 0666, NULL);
+
+	if (proc_rmt_reset == NULL) {
+		remove_proc_entry(PROCFS_NAME, NULL);
+		printk(KERN_ALERT "Error: Could not initialize /proc/%s\n", PROCFS_NAME);
+		return -ENOMEM;
+	}
+
+	proc_rmt_reset->read_proc  = proc_rmt_reset_read;
+	proc_rmt_reset->write_proc = proc_rmt_reset_write;
+	proc_rmt_reset->mode       = S_IFREG | S_IRUGO | S_IWUGO;
+
+	printk(KERN_INFO "/proc/%s created\n", PROCFS_NAME);
+  #endif
+	// >> FerryWu, 2013/03/05, fix "NV items cannot be reset by factory reset" issue
+
 	return 0;
 
 #ifdef CONFIG_MSM_SDIO_SMEM
